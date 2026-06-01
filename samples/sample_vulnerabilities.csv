@@ -1,0 +1,6 @@
+cve_id,vendor,product,vulnerability_name,date_added,kev,epss,epss_percentile,cvss,known_ransomware_campaign_use,required_action,due_date,short_description,nvd_summary
+CVE-2024-3400,Palo Alto Networks,PAN-OS,Command Injection Vulnerability,2026-05-20,true,0.944,0.997,10.0,Known,Apply vendor guidance or discontinue use if mitigations are unavailable,2026-06-10,Sample row for report testing.,
+CVE-2023-34362,Progress,Moveit Transfer,SQL Injection Vulnerability,2026-05-18,true,0.918,0.995,9.8,Known,Apply vendor guidance and confirm exposure,2026-06-08,Sample row for report testing.,
+CVE-2024-21762,Fortinet,FortiOS,Out-of-bounds Write Vulnerability,2026-05-14,true,0.873,0.991,9.6,Unknown,Apply vendor guidance and confirm exposed appliances,2026-06-04,Sample row for report testing.,
+CVE-2023-4966,Citrix,NetScaler ADC and Gateway,Information Disclosure Vulnerability,2026-05-09,true,0.832,0.988,9.4,Known,Review sessions and apply vendor updates,2026-05-30,Sample row for report testing.,
+CVE-2024-20353,Cisco,Adaptive Security Appliance,Denial of Service Vulnerability,2026-05-02,true,0.611,0.961,8.6,Unknown,Confirm affected versions and patch status,2026-05-23,Sample row for report testing.,
