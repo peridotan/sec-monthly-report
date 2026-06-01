@@ -1,6 +1,8 @@
 # sec-monthly-report
 
 `sec-monthly-report` は、CISA KEV、FIRST EPSS、必要に応じてNVD情報を使って月次の脆弱性レポートを生成する最小版Python CLIです。
+月次レポートでは、新規脆弱性の確認と、継続的に悪用される既知脆弱性の確認の両方を扱います。
+確認候補はCVE公開日だけでなく、KEV追加日、EPSS、CLIの抽出条件にも基づいて整理します。
 
 外部APIの取得に失敗した場合でも、`samples/sample_vulnerabilities.csv` を使って動作確認できます。
 サンプルCSVへフォールバックした場合の出力はレポート形式確認用であり、実際の月次脆弱性状況を示すものではありません。
@@ -8,7 +10,7 @@
 ## 使い方
 
 ```bash
-python main.py --mode customer --recent-days 30 --top 20
+python main.py --mode customer --recent-days 30 --top 10
 python main.py --mode internal --recent-days 30 --top 20 --with-nvd
 ```
 
@@ -19,7 +21,7 @@ python main.py --mode internal --recent-days 30 --top 20 --with-nvd
 
 - `--recent-days`: 直近何日分を対象にするか。既定は `30`
 - `--with-nvd`: 選択されたCVEにNVD情報を補足する。取得できた場合のみ、CVSSや概要をCSV/レポート補足に反映します。
-- `--top`: レポートに含める最大件数。既定は `20`
+- `--top`: レポートに含める最大件数。既定は `20`。掲載件数は表示上限であり、全候補件数ではない場合があります。
 - `--mode`: `customer` または `internal`
 - `--output`: 出力ディレクトリ。既定は `output`
 
@@ -41,6 +43,7 @@ output/2026-06-01_customer_monthly_report.csv
 ```
 
 顧客向けレポートは、経営層にも読みやすい表現で、利用有無や外部公開有無の確認を中心に記載します。
+経営向け要約では上位3件を中心に状況を把握し、詳細表では `--top` で指定した件数分を確認する想定です。
 顧客向けレポートの「初動確認優先度」は対応指示ではなく、利用有無、外部公開有無、未対応有無を確認する順序の目安です。
 
 内部向けレポートは、提案テーマ、確認観点、ベンダー集中度を含めます。
