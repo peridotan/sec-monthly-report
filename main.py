@@ -31,7 +31,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--mode",
         choices=("customer", "internal"),
         default="customer",
-        help="Report audience. Default: customer.",
+        help="Report audience. Default/recommended: customer. internal is deprecated and may be redesigned or removed.",
     )
     parser.add_argument(
         "--output",

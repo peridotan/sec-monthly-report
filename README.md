@@ -16,7 +16,6 @@ customer mode は影響判断済みの経営報告書ではなく、現場担当
 
 ```bash
 python main.py --mode customer --recent-days 30 --top 20 --with-nvd --output output
-python main.py --mode internal --recent-days 30 --top 20 --with-nvd --output output
 ```
 
 簡易実行:
@@ -27,6 +26,7 @@ python main.py --mode customer --recent-days 30 --top 20 --output output
 
 結果は既定で `output/` 配下に出力されます。
 通常運用では `--with-nvd` の利用を推奨します。NVDなしの簡易実行は、候補抽出を速く確認したい場合、ネットワーク制約がある場合、またはスモークテストで使います。
+現在の推奨運用は `customer` mode です。`internal` mode は初期検討用として残っていますが、現在は推奨運用ではなく、今後削除または再設計する可能性があります。
 外部データ取得に失敗した場合はサンプルCSVを使って出力を継続し、レポート冒頭にサンプルデータ利用中であることを表示します。
 
 ## CLIオプション
@@ -34,7 +34,7 @@ python main.py --mode customer --recent-days 30 --top 20 --output output
 - `--recent-days`: 直近何日分を対象にするか。既定は `30`
 - `--with-nvd`: 選択されたCVEにNVD情報を補足する。通常運用では指定を推奨します。取得できた場合、CSVに `cvss` / `nvd_summary` を追加し、Markdown本文ではNVD概要全文を出さず、取得件数とCVSS上位候補のみを表示します。
 - `--top`: Markdownレポート本文に含める最大件数。既定は `20`。CSVには抽出条件に該当した全候補を出力します。
-- `--mode`: `customer` または `internal`
+- `--mode`: `customer` または `internal`。現在の推奨運用は `customer` です。`internal` は非推奨で、今後削除または再設計する可能性があります。
 - `--output`: 出力ディレクトリ。既定は `output`
 
 ## レポートの考え方
@@ -64,7 +64,7 @@ output/2026-06-01_customer_monthly_report.csv
 抽出条件該当件数が20件程度の場合は、customer では `--top 20` を指定してMarkdownにも全候補を掲載することを推奨します。
 顧客向けレポートの「一次確認区分」は対応指示ではなく、利用有無、外部公開有無、未対応有無を確認する順序の目安です。
 
-内部向けレポートは、提案テーマ、確認観点、ベンダー集中度を含めます。
+`internal` mode は初期検討用として残っていますが、現在は非推奨です。提案テーマ、確認観点、ベンダー集中度を含む内部向け出力が必要な場合のみ互換目的で利用してください。
 
 CSVにはCVE、ベンダー、製品、KEV、EPSS、CISA由来の `required_action` などを出力します。`--with-nvd` 指定時にNVD情報を取得できた場合は、`cvss` と `nvd_summary` に補足情報を出力します。
 CSVには詳細作業用の列として `short_description`、`required_action`、`cvss`、`nvd_summary` などを残します。Markdownでは確認候補の一覧性を優先し、長文の補足情報はCSVで確認します。
