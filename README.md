@@ -9,18 +9,27 @@
 
 ## 使い方
 
+推奨実行:
+
 ```bash
-python main.py --mode customer --recent-days 30 --top 20
-python main.py --mode internal --recent-days 30 --top 20 --with-nvd
+python main.py --mode customer --recent-days 30 --top 20 --with-nvd --output output
+python main.py --mode internal --recent-days 30 --top 20 --with-nvd --output output
+```
+
+簡易実行:
+
+```bash
+python main.py --mode customer --recent-days 30 --top 20 --output output
 ```
 
 結果は既定で `output/` 配下に出力されます。
+通常運用では `--with-nvd` の利用を推奨します。NVDなしの簡易実行は、候補抽出を速く確認したい場合、ネットワーク制約がある場合、またはスモークテストで使います。
 外部データ取得に失敗した場合はサンプルCSVを使って出力を継続し、レポート冒頭にサンプルデータ利用中であることを表示します。
 
 ## CLIオプション
 
 - `--recent-days`: 直近何日分を対象にするか。既定は `30`
-- `--with-nvd`: 選択されたCVEにNVD情報を補足する。取得できた場合のみ、CVSSや概要をCSV/レポート補足に反映します。
+- `--with-nvd`: 選択されたCVEにNVD情報を補足する。通常運用では指定を推奨します。取得できた場合、CSVに `cvss` / `nvd_summary` を追加し、Markdown本文ではNVD概要全文を出さず、取得件数とCVSS上位候補のみを表示します。
 - `--top`: Markdownレポート本文に含める最大件数。既定は `20`。CSVには抽出条件に該当した全候補を出力します。
 - `--mode`: `customer` または `internal`
 - `--output`: 出力ディレクトリ。既定は `output`
@@ -51,6 +60,7 @@ output/2026-06-01_customer_monthly_report.csv
 内部向けレポートは、提案テーマ、確認観点、ベンダー集中度を含めます。
 
 CSVにはCVE、ベンダー、製品、KEV、EPSS、CISA由来の `required_action` などを出力します。`--with-nvd` 指定時にNVD情報を取得できた場合は、`cvss` と `nvd_summary` に補足情報を出力します。
+CSVには詳細作業用の列として `short_description`、`required_action`、`cvss`、`nvd_summary` などを残します。Markdownでは確認候補の一覧性を優先し、長文の補足情報はCSVで確認します。
 Markdownレポート本文は `--top` による上位件数のみを掲載し、CSVには抽出条件に該当した全候補を出力します。
 サンプルCSV利用時は古いCVEが含まれる場合があります。レポート内の「抽出条件」はCLIで指定した抽出条件を示すものであり、サンプル出力が実際の直近月次状況を表すことを意味しません。
 

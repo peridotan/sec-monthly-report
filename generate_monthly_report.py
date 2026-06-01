@@ -48,7 +48,8 @@ def generate_monthly_report(
     if with_nvd:
         enrich_with_nvd(candidate_rows)
 
-    stem = f"{generated_at.date().isoformat()}_{mode}_monthly_report"
+    nvd_suffix = "_with_nvd" if with_nvd else ""
+    stem = f"{generated_at.date().isoformat()}_{mode}_monthly_report{nvd_suffix}"
     csv_path = output_dir / f"{stem}.csv"
     report_path = output_dir / f"{stem}.md"
 
@@ -309,7 +310,7 @@ def render_customer_report(
         f"- Markdown掲載件数: {len(rows)} 件",
         f"- CSV出力件数: {csv_count} 件",
         count_note(len(rows), csv_count, top),
-        f"- データ: {'サンプルCSV' if used_sample else 'CISA KEV / FIRST EPSS'}",
+        f"- データ: {data_source_label(used_sample, with_nvd)}",
         *sample_data_notice_lines(used_sample),
         "",
         "## 1. このレポートの使い方",
@@ -325,6 +326,8 @@ def render_customer_report(
         f"- {table_scope_note(len(rows), csv_count, top)}",
         "- 一次確認区分は、KEVおよびEPSSに基づく確認順序の目安です。",
         "- 実際の対応要否は、利用有無、外部公開有無、重要度、補完統制、パッチ適用状況を確認したうえで判断してください。",
+        "- 各候補について、対象製品の利用有無、外部公開・リモートアクセス・重要領域との関係、パッチ適用・回避策・補完統制の有無を確認してください。",
+        "- NVD情報は詳細確認用の補足情報です。--with-nvd 指定時はCVSSやNVD概要をCSVに出力し、Markdownでは取得件数とCVSS上位候補のみを表示します。",
         "",
         vulnerability_table(rows),
         "",
@@ -361,7 +364,7 @@ def render_internal_report(
         f"- CSV出力件数: {csv_count} 件",
         f"- 注記: Markdown本文にはCLIオプション --top により、上位 {top} 件までを掲載しています。抽出条件に該当した全候補はCSV出力を確認してください。",
         "- 注記: 抽出条件該当件数は取得データのうち指定条件に該当した確認候補の件数、Markdown掲載件数は --top による表示上限です。",
-        f"- データ: {'サンプルCSV' if used_sample else 'CISA KEV / FIRST EPSS'}",
+        f"- データ: {data_source_label(used_sample, with_nvd)}",
         *sample_data_notice_lines(used_sample),
         "",
         "## 1. 今月の傾向",
@@ -402,14 +405,13 @@ def vulnerability_table(rows: list[dict[str, str]]) -> str:
     if not rows:
         return "対象データはありません。"
     lines = [
-        "| CVE | CVE公開年 | KEV追加日 | ベンダー | 製品 | KEV該当 | EPSS | 一次確認区分 | 抽出理由 | 確認ポイント |",
-        "| --- | ---: | --- | --- | --- | --- | ---: | --- | --- | --- |",
+        "| CVE | CVE公開年 | KEV追加日 | ベンダー | 製品 | KEV該当 | EPSS | 一次確認区分 | 抽出理由 |",
+        "| --- | ---: | --- | --- | --- | --- | ---: | --- | --- |",
     ]
     for row in rows:
         epss = format_score(row.get("epss"))
-        check = "利用有無、外部公開有無、パッチ適用状況を確認"
         lines.append(
-            f"| {cell(row.get('cve_id'))} | {cve_year(row)} | {kev_added_date(row)} | {cell(row.get('vendor'))} | {cell(row.get('product'))} | {kev_label(row)} | {epss} | {initial_check_category(row)} | {extraction_reason(row)} | {check} |"
+            f"| {cell(row.get('cve_id'))} | {cve_year(row)} | {kev_added_date(row)} | {cell(row.get('vendor'))} | {cell(row.get('product'))} | {kev_label(row)} | {epss} | {initial_check_category(row)} | {extraction_reason(row)} |"
         )
     return "\n".join(lines)
 
@@ -457,19 +459,35 @@ def nvd_supplement(rows: list[dict[str, str]], with_nvd: bool) -> str:
         return "今回はNVD補足情報を取得していません。必要に応じて --with-nvd を指定すると、取得できたCVSSや概要を追加し、詳細確認に利用できます。"
 
     enriched = [row for row in rows if row.get("cvss") or row.get("nvd_summary")]
+    missing_count = len(rows) - len(enriched)
     if not enriched:
         return "NVD補足を取得しましたが、対象CVEに反映できるCVSSや概要はありませんでした。"
 
     lines = [
-        "| CVE | CVSS | NVD概要 |",
-        "| --- | ---: | --- |",
+        f"NVD補足情報を取得しました。取得済み {len(enriched)} 件、未取得 {missing_count} 件です。詳細なCVSSとNVD概要はCSVを確認してください。",
     ]
-    for row in enriched:
-        lines.append(
-            f"| {cell(row.get('cve_id'))} | {cell(row.get('cvss'))} | {cell(row.get('nvd_summary'))} |"
+    cvss_rows = sorted(
+        [row for row in enriched if row.get("cvss")],
+        key=lambda row: safe_float(row.get("cvss")),
+        reverse=True,
+    )
+    if not cvss_rows:
+        lines.extend(["", "CVSSを取得できた候補はありません。詳細はCSVを確認してください。"])
+    else:
+        lines.extend(
+            [
+                "",
+                "CVSS高めの候補（CVSS取得済みの上位5件）:",
+                "",
+                "| CVE | CVSS | ベンダー | 製品 |",
+                "| --- | ---: | --- | --- |",
+            ]
         )
+        for row in cvss_rows[:5]:
+            lines.append(
+                f"| {cell(row.get('cve_id'))} | {cell(row.get('cvss'))} | {cell(row.get('vendor'))} | {cell(row.get('product'))} |"
+            )
     return "\n".join(lines)
-
 
 def count_note(markdown_count: int, csv_count: int, top: int) -> str:
     if markdown_count == csv_count:
@@ -559,6 +577,14 @@ def sample_data_notice_lines(used_sample: bool) -> list[str]:
         "- 注記: サンプルデータ利用中。この出力はレポート形式確認用であり、"
         "実際の月次脆弱性状況を示すものではありません。"
     ]
+
+
+def data_source_label(used_sample: bool, with_nvd: bool) -> str:
+    if used_sample:
+        return "サンプルCSV"
+    if with_nvd:
+        return "CISA KEV / FIRST EPSS / NVD"
+    return "CISA KEV / FIRST EPSS"
 
 
 def is_kev(row: dict[str, str]) -> bool:

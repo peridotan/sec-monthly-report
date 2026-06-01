@@ -19,7 +19,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--with-nvd",
         action="store_true",
-        help="Fetch supplemental NVD data for selected CVEs when available.",
+        help="Fetch supplemental NVD data for selected CVEs. Recommended for normal operation; omit for quick smoke tests.",
     )
     parser.add_argument(
         "--top",
