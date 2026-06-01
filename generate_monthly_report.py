@@ -56,8 +56,11 @@ def generate_monthly_report(
     report_path.write_text(
         render_report(
             report_rows,
+            candidate_rows=candidate_rows,
             mode=mode,
             recent_days=recent_days,
+            period_start=period_start(generated_at.date(), recent_days),
+            period_end=generated_at.date(),
             top=top,
             source_count=source_count,
             candidate_count=candidate_count,
@@ -180,6 +183,12 @@ def filter_recent(rows: list[dict[str, str]], recent_days: int, today: date) -> 
     return filtered
 
 
+def period_start(today: date, recent_days: int) -> date:
+    if recent_days <= 0:
+        return today
+    return today - timedelta(days=recent_days)
+
+
 def parse_date(raw: str) -> date | None:
     if not raw:
         return None
@@ -219,7 +228,7 @@ def write_rows_csv(rows: list[dict[str, str]], path: Path) -> None:
         "kev",
         "epss",
         "epss_percentile",
-        "initial_check_priority",
+        "initial_check_category",
         "extraction_reason",
         "cvss",
         "known_ransomware_campaign_use",
@@ -235,15 +244,18 @@ def write_rows_csv(rows: list[dict[str, str]], path: Path) -> None:
             output_row = dict(row)
             output_row["cve_year"] = cve_year(row)
             output_row["kev_date_added"] = row.get("date_added", "")
-            output_row["initial_check_priority"] = initial_check_priority(row)
+            output_row["initial_check_category"] = initial_check_category(row)
             output_row["extraction_reason"] = extraction_reason(row)
             writer.writerow(output_row)
 
 
 def render_report(
     rows: list[dict[str, str]],
+    candidate_rows: list[dict[str, str]],
     mode: str,
     recent_days: int,
+    period_start: date,
+    period_end: date,
     top: int,
     source_count: int,
     candidate_count: int,
@@ -257,13 +269,27 @@ def render_report(
             rows, recent_days, top, source_count, candidate_count, csv_count, generated_at, used_sample, with_nvd
         )
     return render_customer_report(
-        rows, recent_days, top, source_count, candidate_count, csv_count, generated_at, used_sample, with_nvd
+        rows,
+        candidate_rows,
+        recent_days,
+        period_start,
+        period_end,
+        top,
+        source_count,
+        candidate_count,
+        csv_count,
+        generated_at,
+        used_sample,
+        with_nvd,
     )
 
 
 def render_customer_report(
     rows: list[dict[str, str]],
+    candidate_rows: list[dict[str, str]],
     recent_days: int,
+    period_start: date,
+    period_end: date,
     top: int,
     source_count: int,
     candidate_count: int,
@@ -273,89 +299,42 @@ def render_customer_report(
     with_nvd: bool,
 ) -> str:
     lines = [
-        "# 月次脆弱性レポート（顧客向け）",
+        "# 月次脆弱性確認候補レポート（顧客向け）",
         "",
         f"- 作成日時: {generated_at.astimezone().strftime('%Y-%m-%d %H:%M %Z')}",
         f"- 抽出条件: 直近 {recent_days} 日",
+        f"- 抽出対象期間: {period_start.isoformat()} 〜 {period_end.isoformat()}",
         f"- 取得件数: {source_count} 件",
         f"- 抽出条件該当件数: {candidate_count} 件",
         f"- Markdown掲載件数: {len(rows)} 件",
         f"- CSV出力件数: {csv_count} 件",
-        f"- 注記: Markdown本文にはCLIオプション --top により、上位 {top} 件までを掲載しています。抽出条件に該当した全候補はCSV出力を確認してください。",
-        "- 注記: 抽出条件該当件数は取得データのうち指定条件に該当した確認候補の件数、Markdown掲載件数は --top による表示上限です。",
+        count_note(len(rows), csv_count, top),
         f"- データ: {'サンプルCSV' if used_sample else 'CISA KEV / FIRST EPSS'}",
         *sample_data_notice_lines(used_sample),
         "",
-        "## 1. サマリ",
+        "## 1. このレポートの使い方",
         "",
-        "### 経営向け要約",
+        "- 本レポートは、外部情報に基づく月次の脆弱性確認候補リストです。",
+        "- 貴社環境での利用有無、影響有無、対応状況を判定したものではありません。",
+        "- 現場担当者は2章の一覧をもとに、対象製品の利用有無、外部公開有無、パッチ適用状況を確認してください。",
         "",
-        f"- Markdown掲載件数: {len(rows)} 件",
-        f"- CSV出力件数: {csv_count} 件",
-        f"- KEV該当件数: {kev_count(rows)} 件",
-        f"- ベンダー上位: {top_vendors_text(rows)}",
-        "- まず実施すべきこと: 利用有無、外部公開有無、未対応有無の確認",
+        "## 2. 確認対象一覧",
         "",
-        "本レポートは、直近の新規脆弱性だけでなく、現在も悪用活動が観測される確率が高い既知脆弱性も含めて、月次で確認すべき候補を整理するものです。まずは対象製品の利用有無、外部公開有無、適用済みパッチの確認を推奨します。",
+        "読み方:",
         "",
-        "> 注記: 本レポートは一般に悪用が確認・予測される脆弱性の優先確認リストであり、貴社環境で悪用や影響が確認されたことを示すものではありません。",
-        "",
-        "## 2. 今回確認すべきポイント",
-        "",
-        "- CISA KEVは「悪用確認済み」の脆弱性として扱います。",
-        "- FIRST EPSSは「今後30日以内に悪用活動が観測される確率の推定」として扱います。",
-        "- EPSSは優先順位付けの参考情報であり、EPSSだけでリスク判断は行いません。実際の影響は資産の利用状況、外部公開、重要度、代替対策によって変わります。",
-        "- NVDは任意の補足情報です。--with-nvd 指定時に取得できた場合のみ、CVSSや概要をCSVおよびレポート補足に反映します。",
-        "",
-        "## 3. 本レポートで分かること / 分からないこと",
-        "",
-        "### 分かること",
-        "",
-        "- 一般に悪用が確認されている、または悪用活動が観測される確率が相対的に高い脆弱性",
-        "- 優先的に利用有無を確認すべき製品・ベンダー",
-        "- 初動として確認すべき観点",
-        "",
-        "### 分からないこと",
-        "",
-        "- 貴社環境で対象製品が使われているか",
-        "- 対象資産が外部公開されているか",
-        "- パッチ適用済みか",
-        "- 既に侵害・悪用されているか",
-        "",
-        "## 4. EPSS値の読み方",
-        "",
-        "EPSSは0から1の値で表され、値が高いほど今後30日以内に悪用活動が観測される確率が高いと推定されます。ただし、業務影響や貴社環境での露出状況は含まれません。",
-        "",
-        "## 5. 直近条件で抽出された注目候補",
-        "",
-        "以下は、CVE公開年ではなく、KEV追加日やCLIの抽出条件に基づいて確認候補となったものです。",
-        "",
-        monthly_focus_section(rows, recent_days, generated_at.date()),
-        "",
-        "## 6. 継続して確認すべき高EPSS",
-        "",
-        continuing_high_epss_section(rows, exclude_cves=recent_focus_cves(rows, recent_days, generated_at.date())),
-        "",
-        "## 7. 個別CVE確認表",
-        "",
-        "以下は、KEV該当かつEPSSスコアが相対的に高いものを優先確認候補として抽出したものです。表の「初動確認優先度」は対応優先度ではなく、利用有無や公開状況を確認する順序の目安です。",
-        "",
-        f"本表は --top による上位 {top} 件のみを掲載しています。抽出条件に該当した全候補はCSV出力を確認してください。",
-        "",
-        "古いCVEであっても、レガシー環境、保守端末、検証環境、未更新端末、閉域網内の残存資産などに対象製品が残っている場合は確認対象になります。",
+        f"- {table_scope_note(len(rows), csv_count, top)}",
+        "- 一次確認区分は、KEVおよびEPSSに基づく確認順序の目安です。",
+        "- 実際の対応要否は、利用有無、外部公開有無、重要度、補完統制、パッチ適用状況を確認したうえで判断してください。",
         "",
         vulnerability_table(rows),
         "",
-        "## 8. 推奨確認順",
+        "## 3. 補足",
         "",
-        "1. 対象製品を利用しているか確認する。",
-        "2. 対象資産がインターネット公開、リモートアクセス、認証基盤、セキュリティ機器に関係するか確認する。",
-        "3. パッチ適用状況、回避策、補完的対策の有無を確認する。",
-        "4. 影響がある場合は、ベンダー推奨手順に従って対応計画を立てる。",
-        "",
-        "## 9. NVD補足",
-        "",
-        nvd_supplement(rows, with_nvd),
+        "- CISA KEVは「悪用確認済み」の脆弱性として扱います。",
+        "- FIRST EPSSは「今後30日以内に悪用活動が観測される確率の推定」として扱います。",
+        "- EPSSだけでリスク判断せず、資産の利用状況、外部公開有無、事業影響、補完統制、パッチ適用状況とあわせて確認します。",
+        "- 古いCVEでも、KEV追加日が新しいものやEPSSが高いものは確認対象になります。",
+        f"- NVDは任意の補足情報です。{nvd_supplement(rows, with_nvd)}",
     ]
     return "\n".join(lines) + "\n"
 
@@ -423,14 +402,14 @@ def vulnerability_table(rows: list[dict[str, str]]) -> str:
     if not rows:
         return "対象データはありません。"
     lines = [
-        "| CVE | CVE公開年 | KEV追加日 | ベンダー | 製品 | KEV該当 | EPSS | 初動確認優先度 | 抽出理由 | 確認ポイント |",
+        "| CVE | CVE公開年 | KEV追加日 | ベンダー | 製品 | KEV該当 | EPSS | 一次確認区分 | 抽出理由 | 確認ポイント |",
         "| --- | ---: | --- | --- | --- | --- | ---: | --- | --- | --- |",
     ]
     for row in rows:
         epss = format_score(row.get("epss"))
         check = "利用有無、外部公開有無、パッチ適用状況を確認"
         lines.append(
-            f"| {cell(row.get('cve_id'))} | {cve_year(row)} | {kev_added_date(row)} | {cell(row.get('vendor'))} | {cell(row.get('product'))} | {kev_label(row)} | {epss} | {initial_check_priority(row)} | {extraction_reason(row)} | {check} |"
+            f"| {cell(row.get('cve_id'))} | {cve_year(row)} | {kev_added_date(row)} | {cell(row.get('vendor'))} | {cell(row.get('product'))} | {kev_label(row)} | {epss} | {initial_check_category(row)} | {extraction_reason(row)} | {check} |"
         )
     return "\n".join(lines)
 
@@ -452,12 +431,17 @@ def kev_count(rows: list[dict[str, str]]) -> int:
     return sum(1 for row in rows if row.get("kev", "").lower() == "true")
 
 
-def top_vendors_text(rows: list[dict[str, str]], limit: int = 3) -> str:
+def top_vendors_text(rows: list[dict[str, str]], limit: int = 3, include_other: bool = False) -> str:
     counts = vendor_counts(rows)
     if not counts:
         return "対象データなし"
     items = sorted(counts.items(), key=lambda item: item[1], reverse=True)[:limit]
-    return "、".join(f"{vendor} {count}件" for vendor, count in items)
+    parts = [f"{vendor} {count}件" for vendor, count in items]
+    if include_other:
+        other_count = sum(counts.values()) - sum(count for _, count in items)
+        if other_count:
+            parts.append(f"その他 {other_count}件")
+    return "、".join(parts)
 
 
 def vendor_counts(rows: list[dict[str, str]]) -> dict[str, int]:
@@ -470,7 +454,7 @@ def vendor_counts(rows: list[dict[str, str]]) -> dict[str, int]:
 
 def nvd_supplement(rows: list[dict[str, str]], with_nvd: bool) -> str:
     if not with_nvd:
-        return "今回はNVD補足情報を取得していません。必要に応じて --with-nvd を指定すると、取得できたCVSSや概要を補足します。"
+        return "今回はNVD補足情報を取得していません。必要に応じて --with-nvd を指定すると、取得できたCVSSや概要を追加し、詳細確認に利用できます。"
 
     enriched = [row for row in rows if row.get("cvss") or row.get("nvd_summary")]
     if not enriched:
@@ -485,6 +469,40 @@ def nvd_supplement(rows: list[dict[str, str]], with_nvd: bool) -> str:
             f"| {cell(row.get('cve_id'))} | {cell(row.get('cvss'))} | {cell(row.get('nvd_summary'))} |"
         )
     return "\n".join(lines)
+
+
+def count_note(markdown_count: int, csv_count: int, top: int) -> str:
+    if markdown_count == csv_count:
+        return (
+            "- 注記: 抽出条件該当件数は取得データのうち指定条件に該当した確認候補の件数です。"
+            "今回はMarkdown本文とCSVの両方に全候補を掲載しています。"
+        )
+    return (
+        f"- 注記: 抽出条件該当件数は取得データのうち指定条件に該当した確認候補の件数です。"
+        f"Markdown本文には --top により上位 {top} 件までを掲載し、抽出条件に該当した全候補はCSVに出力しています。"
+    )
+
+
+def table_scope_note(markdown_count: int, csv_count: int, top: int) -> str:
+    if markdown_count == csv_count:
+        return "本表には、抽出条件に該当した全候補を掲載しています。CSVにも同じ全候補を出力しています。"
+    return f"本表は --top による上位 {top} 件のみを掲載しています。抽出条件に該当した全候補はCSV出力を確認してください。"
+
+
+def target_areas_text(rows: list[dict[str, str]]) -> str:
+    areas: list[str] = []
+    text = " ".join(f"{row.get('vendor', '')} {row.get('product', '')}".lower() for row in rows)
+    if any(keyword in text for keyword in ("windows", "internet explorer", "directx", "defender")):
+        areas.append("レガシーOS/ブラウザ/端末")
+    if "adobe" in text or "acrobat" in text or "reader" in text:
+        areas.append("Adobe製品")
+    if any(keyword in text for keyword in ("cisco", "palo alto", "pan-os", "ivanti", "sd-wan")):
+        areas.append("ネットワーク機器/リモートアクセス")
+    if any(keyword in text for keyword in ("drupal", "langflow", "litespeed", "cpanel", "tanstack", "litellm")):
+        areas.append("公開Web/開発・検証環境")
+    if any(keyword in text for keyword in ("trend micro", "apex one", "security")):
+        areas.append("セキュリティ製品")
+    return "、".join(areas) if areas else "対象製品の利用有無確認"
 
 
 def monthly_focus_section(rows: list[dict[str, str]], recent_days: int, today: date) -> str:
@@ -527,7 +545,7 @@ def compact_cve_list(rows: list[dict[str, str]], limit: int = 5) -> str:
     lines = []
     for row in rows[:limit]:
         lines.append(
-            f"- {cell(row.get('cve_id'))}: {cell(row.get('vendor'))} {cell(row.get('product'))}、{extraction_reason(row)}、初動確認優先度 {initial_check_priority(row)}"
+            f"- {cell(row.get('cve_id'))}: {cell(row.get('vendor'))} {cell(row.get('product'))}、{extraction_reason(row)}、一次確認区分 {initial_check_category(row)}"
         )
     if len(rows) > limit:
         lines.append(f"- ほか {len(rows) - limit} 件は個別CVE確認表を参照してください。")
@@ -551,12 +569,12 @@ def kev_label(row: dict[str, str]) -> str:
     return "該当" if is_kev(row) else "非該当"
 
 
-def initial_check_priority(row: dict[str, str]) -> str:
+def initial_check_category(row: dict[str, str]) -> str:
     if is_kev(row) and safe_float(row.get("epss")) >= 0.9:
-        return "高"
+        return "優先確認"
     if is_kev(row) and safe_float(row.get("epss")) >= 0.7:
-        return "中"
-    return "要確認"
+        return "早期確認"
+    return "通常確認"
 
 
 def extraction_reason(row: dict[str, str]) -> str:
