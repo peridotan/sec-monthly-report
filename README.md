@@ -47,16 +47,19 @@ output/2026-06-01_customer_monthly_report.csv
 CSVにはCVE、ベンダー、製品、KEV、EPSS、CISA由来の `required_action` などを出力します。`--with-nvd` 指定時にNVD情報を取得できた場合は、`cvss` と `nvd_summary` に補足情報を出力します。
 サンプルCSV利用時は古いCVEが含まれる場合があります。レポート内の「抽出条件」はCLIで指定した抽出条件を示すものであり、サンプル出力が実際の直近月次状況を表すことを意味しません。
 
-## 将来のCodex Skill化
+## Codex Skill
 
-将来的に `codex-skills/sec-monthly-report/` を追加しやすいよう、CLIエントリポイントとレポート生成処理を分離しています。
-
-想定構成:
+このリポジトリ用のCodex Skillを以下に配置しています。
 
 ```text
-codex-skills/
-  sec-monthly-report/
-    SKILL.md
+codex-skills/sec-monthly-report/SKILL.md
 ```
 
-Skill側では、本CLIの実行手順、出力確認観点、顧客向け/内部向けの説明ルールを記述する想定です。
+Codexで本ツールのレポート生成、出力レビュー、顧客向け/内部向けの書き分け確認を行うときに利用できます。
+
+使い方例:
+
+```text
+Use $sec-monthly-report to review the generated customer and internal reports.
+Use $sec-monthly-report to regenerate reports and check README consistency.
+```
