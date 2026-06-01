@@ -1,5 +1,7 @@
 # sec-monthly-report
 
+[![test](https://github.com/peridotan/sec-monthly-report/actions/workflows/test.yml/badge.svg)](https://github.com/peridotan/sec-monthly-report/actions/workflows/test.yml)
+
 `sec-monthly-report` は、CISA KEV、FIRST EPSS、必要に応じてNVD情報を使って月次の脆弱性確認候補レポートを生成する最小版Python CLIです。
 customer mode は影響判断済みの経営報告書ではなく、現場担当者が対象製品の利用有無、外部公開有無、対応状況を確認するための確認候補レポートです。
 月次の確認候補レポートでは、新規脆弱性の確認と、継続的に悪用される既知脆弱性の確認の両方を扱います。
