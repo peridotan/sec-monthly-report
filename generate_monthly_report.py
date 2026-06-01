@@ -267,17 +267,41 @@ def render_customer_report(
         "- EPSSは優先順位付けの参考情報であり、EPSSだけでリスク判断は行いません。実際の影響は資産の利用状況、外部公開、重要度、代替対策によって変わります。",
         "- NVDは任意の補足情報です。--with-nvd 指定時に取得できた場合のみ、CVSSや概要をCSVおよびレポート補足に反映します。",
         "",
-        "## 3. 個別CVE確認表",
+        "## 3. 本レポートで分かること / 分からないこと",
+        "",
+        "### 分かること",
+        "",
+        "- 一般に悪用が確認されている、または悪用活動が観測される確率が相対的に高い脆弱性",
+        "- 優先的に利用有無を確認すべき製品・ベンダー",
+        "- 初動として確認すべき観点",
+        "",
+        "### 分からないこと",
+        "",
+        "- 貴社環境で対象製品が使われているか",
+        "- 対象資産が外部公開されているか",
+        "- パッチ適用済みか",
+        "- 既に侵害・悪用されているか",
+        "",
+        "## 4. EPSS値の読み方",
+        "",
+        "EPSSは0から1の値で表され、値が高いほど今後30日以内に悪用活動が観測される確率が高いと推定されます。ただし、業務影響や貴社環境での露出状況は含まれません。",
+        "",
+        "## 5. 個別CVE確認表",
+        "",
+        "以下は、KEV該当かつEPSSスコアが相対的に高いものを優先確認候補として抽出したものです。表の「初動確認優先度」は対応優先度ではなく、利用有無や公開状況を確認する順序の目安です。",
+        "",
+        "古いCVEであっても、レガシー環境、保守端末、検証環境、未更新端末、閉域網内の残存資産などに対象製品が残っている場合は確認対象になります。",
         "",
         vulnerability_table(rows),
         "",
-        "## 4. 推奨アクション",
+        "## 6. 推奨確認順",
         "",
-        "- 対象製品の利用有無を確認する。",
-        "- インターネット公開、認証基盤、リモートアクセス、セキュリティ機器に関係する資産を優先して確認する。",
-        "- ベンダー情報とパッチ適用状況を確認し、影響範囲を切り分ける。",
+        "1. 対象製品を利用しているか確認する。",
+        "2. 対象資産がインターネット公開、リモートアクセス、認証基盤、セキュリティ機器に関係するか確認する。",
+        "3. パッチ適用状況、回避策、補完的対策の有無を確認する。",
+        "4. 影響がある場合は、ベンダー推奨手順に従って対応計画を立てる。",
         "",
-        "## 5. NVD補足",
+        "## 7. NVD補足",
         "",
         nvd_supplement(rows, with_nvd),
     ]
@@ -333,14 +357,14 @@ def vulnerability_table(rows: list[dict[str, str]]) -> str:
     if not rows:
         return "対象データはありません。"
     lines = [
-        "| CVE | ベンダー | 製品 | KEV | EPSS | 確認ポイント |",
-        "| --- | --- | --- | --- | ---: | --- |",
+        "| CVE | ベンダー | 製品 | KEV該当 | EPSS | 初動確認優先度 | 確認ポイント |",
+        "| --- | --- | --- | --- | ---: | --- | --- |",
     ]
     for row in rows:
         epss = format_score(row.get("epss"))
         check = "利用有無、外部公開有無、パッチ適用状況を確認"
         lines.append(
-            f"| {cell(row.get('cve_id'))} | {cell(row.get('vendor'))} | {cell(row.get('product'))} | {cell(row.get('kev'))} | {epss} | {check} |"
+            f"| {cell(row.get('cve_id'))} | {cell(row.get('vendor'))} | {cell(row.get('product'))} | {kev_label(row)} | {epss} | {initial_check_priority(row)} | {check} |"
         )
     return "\n".join(lines)
 
@@ -380,7 +404,7 @@ def vendor_counts(rows: list[dict[str, str]]) -> dict[str, int]:
 
 def nvd_supplement(rows: list[dict[str, str]], with_nvd: bool) -> str:
     if not with_nvd:
-        return "NVD補足は未取得です。必要に応じて --with-nvd を指定すると、取得できたCVSSや概要をCSVおよび本補足に反映します。"
+        return "今回はNVD補足情報を取得していません。必要に応じて --with-nvd を指定すると、取得できたCVSSや概要を補足します。"
 
     enriched = [row for row in rows if row.get("cvss") or row.get("nvd_summary")]
     if not enriched:
@@ -404,6 +428,22 @@ def sample_data_notice_lines(used_sample: bool) -> list[str]:
         "- 注記: サンプルデータ利用中。この出力はレポート形式確認用であり、"
         "実際の月次脆弱性状況を示すものではありません。"
     ]
+
+
+def is_kev(row: dict[str, str]) -> bool:
+    return row.get("kev", "").lower() == "true"
+
+
+def kev_label(row: dict[str, str]) -> str:
+    return "該当" if is_kev(row) else "非該当"
+
+
+def initial_check_priority(row: dict[str, str]) -> str:
+    if is_kev(row) and safe_float(row.get("epss")) >= 0.9:
+        return "高"
+    if is_kev(row) and safe_float(row.get("epss")) >= 0.7:
+        return "中"
+    return "要確認"
 
 
 def format_score(raw: str | None) -> str:
