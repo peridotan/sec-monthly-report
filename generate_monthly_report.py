@@ -405,13 +405,13 @@ def vulnerability_table(rows: list[dict[str, str]]) -> str:
     if not rows:
         return "対象データはありません。"
     lines = [
-        "| CVE | CVE公開年 | KEV追加日 | ベンダー | 製品 | KEV該当 | EPSS | 一次確認区分 | 抽出理由 |",
-        "| --- | ---: | --- | --- | --- | --- | ---: | --- | --- |",
+        "| CVE | CVE公開年 | KEV追加日 | ベンダー | 製品 | 概要 | KEV該当 | EPSS | 一次確認区分 | 抽出理由 |",
+        "| --- | ---: | --- | --- | --- | --- | --- | ---: | --- | --- |",
     ]
     for row in rows:
         epss = format_score(row.get("epss"))
         lines.append(
-            f"| {cell(row.get('cve_id'))} | {cve_year(row)} | {kev_added_date(row)} | {cell(row.get('vendor'))} | {cell(row.get('product'))} | {kev_label(row)} | {epss} | {initial_check_category(row)} | {extraction_reason(row)} |"
+            f"| {cell(row.get('cve_id'))} | {cve_year(row)} | {kev_added_date(row)} | {cell(row.get('vendor'))} | {cell(row.get('product'))} | {summary_cell(row)} | {kev_label(row)} | {epss} | {initial_check_category(row)} | {extraction_reason(row)} |"
         )
     return "\n".join(lines)
 
@@ -623,6 +623,53 @@ def cve_year(row: dict[str, str]) -> str:
 
 def kev_added_date(row: dict[str, str]) -> str:
     return cell(row.get("date_added"))
+
+
+def summary_cell(row: dict[str, str]) -> str:
+    summary = row.get("nvd_summary") or row.get("short_description") or ""
+    vuln_type = vulnerability_type_label(summary)
+    display_name = product_display_name(row)
+    return cell(f"{display_name} の{vuln_type or '脆弱性'}")
+
+
+def product_display_name(row: dict[str, str]) -> str:
+    vendor = row.get("vendor") or ""
+    product = row.get("product") or ""
+    ambiguous_products = {"core", "microsoft", "defender"}
+    if vendor and product and vendor.lower() == product.lower():
+        return product
+    if product and product.lower() not in ambiguous_products:
+        return product
+    if vendor and product:
+        return f"{vendor} {product}"
+    return product or vendor or "対象製品"
+
+
+def vulnerability_type_label(text: str) -> str:
+    normalized = (text or "").lower()
+    patterns = [
+        (("supply chain attack", "malicious package", "malicious version", "malicious code", "trojanized"), "サプライチェーン攻撃"),
+        (("remote code execution", "execute arbitrary code", "arbitrary code execution", "code execution"), "リモートコード実行"),
+        (("authentication bypass", "bypass authentication", "bypass security"), "認証バイパス"),
+        (("sql injection", "sql command"), "SQL Injection"),
+        (("buffer overflow", "heap-based buffer overflow", "overflow vulnerability"), "バッファオーバーフロー"),
+        (("privilege escalation", "elevate privileges", "escalation of privilege"), "権限昇格"),
+        (("cross-site scripting", "xss"), "クロスサイトスクリプティング"),
+        (("denial of service", "dos vulnerability"), "サービス拒否"),
+        (("directory traversal", "path traversal"), "ディレクトリトラバーサル"),
+        (("use-after-free", "use after free"), "Use-after-free"),
+    ]
+    for keywords, label in patterns:
+        if any(keyword in normalized for keyword in keywords):
+            return label
+    return ""
+
+
+def truncate_text(raw: str, limit: int) -> str:
+    text = " ".join((raw or "").split())
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1].rstrip() + "…"
 
 
 def format_score(raw: str | None) -> str:
