@@ -42,24 +42,26 @@ def generate_monthly_report(
 
     rows = filter_recent(rows, recent_days=recent_days, today=generated_at.date())
     candidate_count = len(rows)
-    rows = sorted(rows, key=sort_key, reverse=True)[:top]
+    candidate_rows = sorted(rows, key=sort_key, reverse=True)
+    report_rows = candidate_rows[:top]
 
     if with_nvd:
-        enrich_with_nvd(rows)
+        enrich_with_nvd(candidate_rows)
 
     stem = f"{generated_at.date().isoformat()}_{mode}_monthly_report"
     csv_path = output_dir / f"{stem}.csv"
     report_path = output_dir / f"{stem}.md"
 
-    write_rows_csv(rows, csv_path)
+    write_rows_csv(candidate_rows, csv_path)
     report_path.write_text(
         render_report(
-            rows,
+            report_rows,
             mode=mode,
             recent_days=recent_days,
             top=top,
             source_count=source_count,
             candidate_count=candidate_count,
+            csv_count=len(candidate_rows),
             generated_at=generated_at,
             used_sample=used_sample,
             with_nvd=with_nvd,
@@ -208,6 +210,8 @@ def safe_float(raw: str | None) -> float:
 def write_rows_csv(rows: list[dict[str, str]], path: Path) -> None:
     fieldnames = [
         "cve_id",
+        "cve_year",
+        "kev_date_added",
         "vendor",
         "product",
         "vulnerability_name",
@@ -215,6 +219,8 @@ def write_rows_csv(rows: list[dict[str, str]], path: Path) -> None:
         "kev",
         "epss",
         "epss_percentile",
+        "initial_check_priority",
+        "extraction_reason",
         "cvss",
         "known_ransomware_campaign_use",
         "required_action",
@@ -225,7 +231,13 @@ def write_rows_csv(rows: list[dict[str, str]], path: Path) -> None:
     with path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()
-        writer.writerows(rows)
+        for row in rows:
+            output_row = dict(row)
+            output_row["cve_year"] = cve_year(row)
+            output_row["kev_date_added"] = row.get("date_added", "")
+            output_row["initial_check_priority"] = initial_check_priority(row)
+            output_row["extraction_reason"] = extraction_reason(row)
+            writer.writerow(output_row)
 
 
 def render_report(
@@ -235,13 +247,18 @@ def render_report(
     top: int,
     source_count: int,
     candidate_count: int,
+    csv_count: int,
     generated_at: datetime,
     used_sample: bool,
     with_nvd: bool,
 ) -> str:
     if mode == "internal":
-        return render_internal_report(rows, recent_days, top, source_count, candidate_count, generated_at, used_sample, with_nvd)
-    return render_customer_report(rows, recent_days, top, source_count, candidate_count, generated_at, used_sample, with_nvd)
+        return render_internal_report(
+            rows, recent_days, top, source_count, candidate_count, csv_count, generated_at, used_sample, with_nvd
+        )
+    return render_customer_report(
+        rows, recent_days, top, source_count, candidate_count, csv_count, generated_at, used_sample, with_nvd
+    )
 
 
 def render_customer_report(
@@ -250,6 +267,7 @@ def render_customer_report(
     top: int,
     source_count: int,
     candidate_count: int,
+    csv_count: int,
     generated_at: datetime,
     used_sample: bool,
     with_nvd: bool,
@@ -261,9 +279,10 @@ def render_customer_report(
         f"- 抽出条件: 直近 {recent_days} 日",
         f"- 取得件数: {source_count} 件",
         f"- 抽出条件該当件数: {candidate_count} 件",
-        f"- 掲載件数: {len(rows)} 件",
-        f"- 注記: CLIオプション --top により、上位 {top} 件までを掲載しています。掲載件数は表示上限であり、全候補件数ではない場合があります。",
-        "- 注記: 抽出条件該当件数は取得データのうち指定条件に該当した確認候補の件数、掲載件数は --top による表示上限です。",
+        f"- Markdown掲載件数: {len(rows)} 件",
+        f"- CSV出力件数: {csv_count} 件",
+        f"- 注記: Markdown本文にはCLIオプション --top により、上位 {top} 件までを掲載しています。抽出条件に該当した全候補はCSV出力を確認してください。",
+        "- 注記: 抽出条件該当件数は取得データのうち指定条件に該当した確認候補の件数、Markdown掲載件数は --top による表示上限です。",
         f"- データ: {'サンプルCSV' if used_sample else 'CISA KEV / FIRST EPSS'}",
         *sample_data_notice_lines(used_sample),
         "",
@@ -271,7 +290,8 @@ def render_customer_report(
         "",
         "### 経営向け要約",
         "",
-        f"- 対象件数: {len(rows)} 件",
+        f"- Markdown掲載件数: {len(rows)} 件",
+        f"- CSV出力件数: {csv_count} 件",
         f"- KEV該当件数: {kev_count(rows)} 件",
         f"- ベンダー上位: {top_vendors_text(rows)}",
         "- まず実施すべきこと: 利用有無、外部公開有無、未対応有無の確認",
@@ -320,6 +340,8 @@ def render_customer_report(
         "",
         "以下は、KEV該当かつEPSSスコアが相対的に高いものを優先確認候補として抽出したものです。表の「初動確認優先度」は対応優先度ではなく、利用有無や公開状況を確認する順序の目安です。",
         "",
+        f"本表は --top による上位 {top} 件のみを掲載しています。抽出条件に該当した全候補はCSV出力を確認してください。",
+        "",
         "古いCVEであっても、レガシー環境、保守端末、検証環境、未更新端末、閉域網内の残存資産などに対象製品が残っている場合は確認対象になります。",
         "",
         vulnerability_table(rows),
@@ -344,6 +366,7 @@ def render_internal_report(
     top: int,
     source_count: int,
     candidate_count: int,
+    csv_count: int,
     generated_at: datetime,
     used_sample: bool,
     with_nvd: bool,
@@ -355,9 +378,10 @@ def render_internal_report(
         f"- 抽出条件: 直近 {recent_days} 日",
         f"- 取得件数: {source_count} 件",
         f"- 抽出条件該当件数: {candidate_count} 件",
-        f"- 掲載件数: {len(rows)} 件",
-        f"- 注記: CLIオプション --top により、上位 {top} 件までを掲載しています。掲載件数は表示上限であり、全候補件数ではない場合があります。",
-        "- 注記: 抽出条件該当件数は取得データのうち指定条件に該当した確認候補の件数、掲載件数は --top による表示上限です。",
+        f"- Markdown掲載件数: {len(rows)} 件",
+        f"- CSV出力件数: {csv_count} 件",
+        f"- 注記: Markdown本文にはCLIオプション --top により、上位 {top} 件までを掲載しています。抽出条件に該当した全候補はCSV出力を確認してください。",
+        "- 注記: 抽出条件該当件数は取得データのうち指定条件に該当した確認候補の件数、Markdown掲載件数は --top による表示上限です。",
         f"- データ: {'サンプルCSV' if used_sample else 'CISA KEV / FIRST EPSS'}",
         *sample_data_notice_lines(used_sample),
         "",

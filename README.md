@@ -21,7 +21,7 @@ python main.py --mode internal --recent-days 30 --top 20 --with-nvd
 
 - `--recent-days`: 直近何日分を対象にするか。既定は `30`
 - `--with-nvd`: 選択されたCVEにNVD情報を補足する。取得できた場合のみ、CVSSや概要をCSV/レポート補足に反映します。
-- `--top`: レポートに含める最大件数。既定は `20`。掲載件数は表示上限であり、全候補件数ではない場合があります。
+- `--top`: Markdownレポート本文に含める最大件数。既定は `20`。CSVには抽出条件に該当した全候補を出力します。
 - `--mode`: `customer` または `internal`
 - `--output`: 出力ディレクトリ。既定は `output`
 
@@ -49,6 +49,7 @@ output/2026-06-01_customer_monthly_report.csv
 内部向けレポートは、提案テーマ、確認観点、ベンダー集中度を含めます。
 
 CSVにはCVE、ベンダー、製品、KEV、EPSS、CISA由来の `required_action` などを出力します。`--with-nvd` 指定時にNVD情報を取得できた場合は、`cvss` と `nvd_summary` に補足情報を出力します。
+Markdownレポート本文は `--top` による上位件数のみを掲載し、CSVには抽出条件に該当した全候補を出力します。
 サンプルCSV利用時は古いCVEが含まれる場合があります。レポート内の「抽出条件」はCLIで指定した抽出条件を示すものであり、サンプル出力が実際の直近月次状況を表すことを意味しません。
 
 ## Codex Skill
